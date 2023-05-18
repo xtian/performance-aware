@@ -1,24 +1,82 @@
 const std = @import("std");
 
-pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+const Operation = enum(u6) { mov = 0b100010 };
+const Mode = enum(u2) { register = 0b11 };
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
+const Instruction = packed struct(u16) {
+    w: bool,
+    d: bool,
+    operation: Operation,
+    operand: u3,
+    register: u3,
+    mode: Mode,
+};
+
+pub fn main() !void {
+    var args = std.process.args();
+    _ = args.next();
+
+    const filename = args.next().?;
+    const file = try std.fs.cwd().openFile(filename, .{});
+    defer file.close();
+
+    const reader = file.reader();
+
     const stdout_file = std.io.getStdOut().writer();
     var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    const writer = bw.writer();
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    try writer.print("; {s}\n\n", .{filename});
+    try writer.print("bits 16\n\n", .{});
 
-    try bw.flush(); // don't forget to flush!
+    while (reader.readStruct(Instruction)) |instruction| {
+        _ = try writer.write(switch (instruction.operation) {
+            .mov => "mov",
+        });
+
+        _ = try writer.write(" ");
+        try writeAddress("operand", writer, instruction);
+        try writer.print(", ", .{});
+        try writeAddress("register", writer, instruction);
+        try writer.print("\n", .{});
+    } else |err| switch (err) {
+        error.EndOfStream => {},
+        else => std.debug.print("Error reading instruction: {}\n", .{err}),
+    }
+
+    try bw.flush();
 }
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+fn writeAddress(
+    comptime field: []const u8,
+    writer: anytype,
+    instruction: Instruction,
+) !void {
+    if (instruction.w) {
+        _ = try writer.write(switch (@field(instruction, field)) {
+            0b000 => "a",
+            0b001 => "c",
+            0b010 => "d",
+            0b011 => "b",
+            0b100 => "s",
+            0b101 => "b",
+            0b110 => "s",
+            0b111 => "d",
+        });
+
+        _ = try writer.write(switch (@field(instruction, field)) {
+            0b000, 0b001, 0b010, 0b011 => "x",
+            0b100, 0b101 => "p",
+            0b110, 0b111 => "i",
+        });
+    } else {
+        _ = try writer.write(switch (@field(instruction, field)) {
+            0b000, 0b100 => "a",
+            0b001, 0b101 => "c",
+            0b010, 0b110 => "d",
+            0b011, 0b111 => "b",
+        });
+
+        _ = try writer.write(if (instruction.operand < 0b100) "l" else "h");
+    }
 }
