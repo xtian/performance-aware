@@ -78,7 +78,7 @@ pub fn main() !void {
     while (reader.readIntNative(u8)) |byte| {
         fba.reset();
 
-        if (byte & 0b11110000 == 0b01110000 or byte & 0b11110000 == 0b11100000) {
+        if (byte >> 4 == 0b00000111 or byte >> 4 == 0b00001110) {
             const operation = @intToEnum(JumpOperation, byte);
             const data = try reader.readIntNative(i8);
 
@@ -86,7 +86,7 @@ pub fn main() !void {
             continue;
         }
 
-        if (byte & 0b11110000 == 0b10110000) {
+        if (byte >> 4 == 0b00001011) {
             const instruction = @bitCast(ImmediateToRegisterMoveInstruction, byte);
             const data = try readImmediate(reader, instruction.word);
             const register = try registerName(allocator, instruction.reg, instruction.word);
@@ -95,7 +95,7 @@ pub fn main() !void {
             continue;
         }
 
-        if (byte & 0b11111100 == 0b10001000) {
+        if (byte >> 2 == 0b00100010) {
             const instruction = @bitCast(MoveInstruction, byte);
             const extra = try reader.readStruct(InstructionExtra);
             const displacement = try readDisplacement(reader, extra.mode, extra.rm);
@@ -111,7 +111,7 @@ pub fn main() !void {
             continue;
         }
 
-        if (byte & 0b11111100 == 0b10000000) {
+        if (byte >> 2 == 0b00100000) {
             const instruction = @bitCast(ImmediateMathInstruction, byte);
             const extra = try reader.readStruct(InstructionExtra);
             const displacement = try readDisplacement(reader, extra.mode, extra.rm);
